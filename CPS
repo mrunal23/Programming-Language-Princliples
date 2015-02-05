@@ -1,0 +1,266 @@
+#lang racket
+
+;(require C311/trace)
+
+(define empty-k
+  (lambda ()
+    (let ((once-only #f))
+      (lambda (v)
+        (if once-only 
+	    (error 'empty-k "You can only invoke the empty continuation once")	
+            (begin (set! once-only #t) v))))))
+
+(define gcd 
+  (lambda (a b)
+    (cond
+      ((= b 0) a)
+      (else (gcd b (modulo a b))))))
+
+;problem 1
+(define last-non-zero
+  (lambda (ls) 
+    (call/cc
+     (lambda (k)
+       (letrec
+         ((lnz
+           (lambda (ls)             
+             (cond
+               ((null? ls) '())
+               ((eqv? 0 (car ls)) (k (lnz (cdr ls))))
+               (else (cons (car ls) (lnz (cdr ls))))
+	     ))))
+         (lnz ls))))))
+
+;problem 2
+(trace-define my-*
+    (lambda (m n)
+      (* m n)))
+
+(define mult/cc
+    (lambda (n*)
+      (call/cc
+       (lambda (k)
+         (letrec
+           ((m/cc
+             (lambda (n*)
+               (cond
+                 ((null? n*) 1)
+                 ((zero? (car n*)) (k 0))
+                 (else (my-* (car n*) (m/cc (cdr n*))))
+                 )
+               )))
+           (m/cc n*))))))
+
+;(mult/cc '(1 2 3 4 0 6 7 7 ))
+
+;problem 3
+(trace-define times-cps
+  (lambda (ls k)
+    (cond
+      [(null? ls) (k 1)]
+      [(zero? (car ls)) (k 0)]
+      [else (times-cps (cdr ls) (lambda (v) (k (* (car ls) v))))])))
+
+
+;problem 4
+(define times-cps-shortcut
+  (lambda (ls k)
+    (cond
+      [(null? ls) (k 1)]
+      [(zero? (car ls)) 0]
+      [else (times-cps-shortcut (cdr ls) (lambda (v) (k (* (car ls) v))))])))
+
+
+;problem 5
+(define plus-cps
+  (lambda (m k)
+    (k (lambda (n k^) 
+         (k^ (+ m n))))))
+
+
+;problem 6
+
+(define count-syms*-cps
+  (lambda (ls k)
+    (cond
+      [(null? ls) (k 0)]
+      ;[(pair? (car ls)) (+ (count-syms* (car ls)) (count-syms* (cdr ls)))]
+      [(pair? (car ls)) (count-syms*-cps (car ls) (lambda (v) (count-syms*-cps (cdr ls) (lambda (w) (k (+ v w))))))]
+      [(symbol? (car ls)) (count-syms*-cps (cdr ls) (lambda (v) (k (add1 v))))];(add1 (count-syms* (cdr ls)))]
+      [else (count-syms*-cps (cdr ls) (lambda (v) (k v)))])))
+
+
+;problem 7
+
+(define cons-cell-count-cps
+  (lambda (ls k)
+    (cond
+      [(pair? ls) 
+       (cons-cell-count-cps (car ls) (lambda (v) (cons-cell-count-cps (cdr ls) (lambda (w) (k (add1 (+ v w)))))))]
+      [else (k 0)])))
+
+
+;problem 8
+
+(define walk-cps
+  (lambda (v ls k)
+    (cond
+      [(symbol? v)
+       (let ((p (assq v ls)))
+         (cond
+           [p (walk-cps (cdr p) ls (lambda (w) (k w)))] 
+           [else (k v)]))]
+      [else (k v)])))
+
+
+;problem 9
+
+(define ack
+  (lambda (m n k)
+    (cond
+      [(zero? m) (k (add1 n))]
+      [(zero? n) (ack (sub1 m) 1 k)]
+      ;[else (ack (sub1 m) n (ack m (sub1 n) (lambda (w) (w k))))])))
+      [else (ack m (sub1 n) (lambda (w) (ack (sub1 m) w k)))])))
+
+
+;problem 10
+(define fib-cps
+  (lambda (n k)
+    ((lambda (fib)
+       (fib fib n k))
+     (lambda (fib n k)
+       (cond
+	 [(zero? n) (k 0)]
+	 [(= 1 n) (k 1)]
+	 ;[else (+ (fib fib (sub1 n)) (fib fib (sub1 (sub1 n))))]
+         [else (fib fib (sub1 (sub1 n)) (lambda (w) (fib fib (sub1 n) (lambda (v) (k (+ v w))))))])))))
+
+
+;problem 11
+(define null?-cps
+    (lambda (ls k)
+      (k (null? ls))))
+
+(define car-cps
+    (lambda (pr k)
+      (k (car pr))))
+
+(define cdr-cps
+    (lambda (pr k)
+      (k (cdr pr))))
+
+(define unfold-cps
+  (lambda (p f g seed k)
+    ((lambda (h k)
+       (h h  (lambda (v) (v seed '() k))))
+     (lambda (h k)
+       (k (lambda (seed ans k)
+	 (p seed (lambda (w) (if w
+	     (k ans)
+	     (h h 
+                 (lambda (v) (g seed (lambda (v1) (f seed (lambda (v3) (v v1 (cons v3 ans) k))))))))))))) k)))
+
+
+;problem 12
+
+(define empty-s
+  (lambda ()
+    '()))
+ 
+(define extend-s
+  (lambda (x v s)
+    (cons `(,x . ,v) s)))
+ 
+(define unify-cps
+  (lambda (v w s k)
+    (walk-cps v s 
+      (lambda (a)
+        (walk-cps w s 
+          (lambda (b)
+            (cond
+              [(eqv? a b) (k s)]
+              [(symbol? a) (k (extend-s v w s))]
+              [(symbol? b) (k (extend-s w v s))]
+              [(and (pair? a) (pair? b))
+               (unify-cps (car a) (car b) s 
+                      (lambda (c)
+                        (cond
+                          [s (unify-cps (cdr a) (cdr b) s k)]
+                          [else (k #f)])))]
+                          [(equal? a b) (k s)]
+                          [else (k #f)])))))))
+
+
+;problem 13
+(define M
+  (lambda (f)
+    (M-cps f (empty-k))))
+
+(define M-cps
+  (lambda (f k)
+   (k (lambda (ls k)
+      (cond
+        [(null? ls) (k '())]
+        [else (M-cps f (lambda (v1) 
+                         (v1 (cdr ls) 
+                             (lambda (v2) 
+                               (f (car ls) 
+                                  (lambda (v3) 
+                                    (k (cons v3 v2))))))))])))))
+
+
+;problem 14
+
+(define use-of-M-cps
+  (M-cps (lambda (n k) (k  (even? n))) (lambda (v) ( v '(1 2 3 4 5) (empty-k)))))
+
+
+;problem 15
+
+(trace-define strange
+  (lambda (x)
+    ((lambda (g) (lambda (x) (g g)))
+     (lambda (g) (lambda (x) (g g))))))
+
+(define strange-cps
+ (lambda (x k)
+    ((lambda (g k) (lambda (x) (g g k)))
+     (k (lambda (g k) (lambda (x) (g g k))))k)))
+
+
+
+;problem 16
+(define use-of-strange
+  (let ([strange^ (((strange-cps 5 (empty-k)) 6) 7)])
+    (((strange^ 8) 9) 10)))
+
+(define use-of-strange-cps
+  (strange-cps 5 
+                (lambda (v1) 
+                  (v1 6 (lambda (v2) 
+                          (v2 7 (lambda (v3) 
+                                  (v3 (empty-k) 
+                                      (lambda (w) 
+                                        (w 8 (lambda (w1) 
+                                               (w1 9 (lambda (w2) 
+                                                       (w2 10)))))))))))))) 
+
+
+;problem 17
+
+(define why-cps
+  (lambda (f k)
+    ((lambda (g k)
+       (f (lambda (x) ((g g k) x))))
+     (lambda (g k)
+       (f (lambda (x ) ((g g k) x)))) k)))
+
+
+(define almost-length
+    (lambda (f)
+      (lambda (ls)
+        (if (null? ls)
+            0
+            (add1 (f (cdr ls)))))))
+
