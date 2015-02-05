@@ -1,5 +1,6 @@
 # Programming-Language-Princliples
-CSCI B521
+CSCI B521.
+
 Systematic approach to programming languages. 
 Relationships among languages, properties and features of languages, the computer environment necessary to support language execution.
 
